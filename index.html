@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f6f8">
+    <title>Transferência de estoque</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="page">
+      <header class="page-header">
+        <div class="brand-mark" aria-hidden="true">TE</div>
+        <div>
+          <p class="eyebrow">CONTROLE DE ESTOQUE</p>
+          <h1>Transferência de itens</h1>
+          <p class="subtitle">Organize os itens da planilha e registre o resultado da movimentação.</p>
+        </div>
+      </header>
+
+      <section class="panel import-panel" aria-labelledby="import-title">
+        <div class="section-heading">
+          <div>
+            <p class="step-label">PASSO 1</p>
+            <h2 id="import-title">Cole os dados da planilha</h2>
+          </div>
+        </div>
+        <p class="helper-text">Copie a planilha inteira do Excel e cole aqui. O sistema usa as colunas <strong>A: código, B: descrição, C: quantidade disponível, D: depósito de origem e F: depósito de destino</strong>. A coluna E e o cabeçalho são ignorados.</p>
+        <label class="sr-only" for="spreadsheet-input">Dados copiados da planilha</label>
+        <textarea id="spreadsheet-input" spellcheck="false" placeholder="Nº do item&#9;Descrição do item&#9;Em estoque&#9;Confirmado&#9;Pedido&#9;Disponível&#10;MP00065610&#9;Produto de exemplo&#9;10.000.000&#9;DP018&#9;&#9;DP001"></textarea>
+        <div class="import-footer">
+          <p id="import-message" class="message" role="status" aria-live="polite"></p>
+          <div class="import-actions">
+            <button id="process-button" class="button button-primary" type="button">Processar planilha</button>
+            <button id="copy-sap-button" class="button button-secondary" type="button" hidden>Copiar para o SAP</button>
+            <button id="start-conference-button" class="button" type="button" hidden>Iniciar conferência de Transferência</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="items-section" class="panel items-panel" aria-labelledby="items-title" hidden>
+        <div class="section-heading items-heading">
+          <div>
+            <p class="step-label">PASSO 2</p>
+            <h2 id="items-title">Revise e classifique os itens</h2>
+          </div>
+          <span id="item-count" class="count-badge"></span>
+        </div>
+        <p class="helper-text">Confira a origem e o destino de cada item. Escolha uma ação; ao marcar “Transferido”, a quantidade começa com o total disponível e pode ser ajustada.</p>
+        <div id="items-list" class="items-list"></div>
+        <div class="finish-row">
+          <p id="finish-message" class="message" role="status" aria-live="polite"></p>
+          <button id="finish-button" class="button button-primary" type="button">Finalizar relatório</button>
+        </div>
+      </section>
+
+      <section class="panel reports-panel" aria-labelledby="reports-title">
+        <div class="section-heading">
+          <div>
+            <p class="step-label">HISTÓRICO LOCAL</p>
+            <h2 id="reports-title">Relatórios finalizados</h2>
+          </div>
+        </div>
+        <p class="helper-text">Os relatórios ficam salvos neste navegador para testes e podem ser baixados novamente.</p>
+        <div id="reports-list" class="reports-list"></div>
+        <p id="reports-empty" class="empty-state">Nenhum relatório finalizado neste navegador.</p>
+      </section>
+
+      <footer class="page-footer">Protótipo de testes · os dados ficam armazenados somente neste navegador.</footer>
+    </main>
+    <dialog id="preview-modal">
+
+  <div class="modal-content">
+
+    <h2>Itens encontrados</h2>
+
+    <div id="preview-list"></div>
+
+    <div class="modal-actions">
+
+      <button
+        id="modal-start-conference"
+        class="button button-primary">
+        Iniciar Conferência
+      </button>
+
+      <button
+        id="modal-close"
+        class="button">
+        Fechar
+      </button>
+
+    </div>
+
+  </div>
+
+</dialog>
+
+<dialog id="reset-modal">
+
+  <div class="modal-content">
+
+    <h2>⚠ Atenção</h2>
+
+    <p>
+      Deseja realmente iniciar uma nova conferência?
+    </p>
+
+    <p>
+      Todos os dados da conferência atual serão perdidos.
+    </p>
+
+    <div class="modal-actions">
+      
+      <button
+        id="confirm-reset"
+        class="button button-primary"
+        type="button">
+        Sim, Reiniciar
+      </button>
+	
+	
+      <button
+        id="cancel-reset"
+        class="button"
+        type="button">
+        Cancelar
+      </button>
+
+    </div>
+  </div>
+
+</dialog>
+  </body>
+</html>
