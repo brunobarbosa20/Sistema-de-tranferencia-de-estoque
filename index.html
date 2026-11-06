@@ -19,6 +19,23 @@
         </div>
       </header>
 
+      <section class="panel settings-panel" aria-labelledby="settings-title">
+        <div class="section-heading">
+          <div>
+            <p class="step-label">CONFIGURAÇÃO</p>
+            <h2 id="settings-title">Pasta de destino dos relatórios</h2>
+          </div>
+        </div>
+        <div class="destination-row">
+          <div class="destination-info">
+            <span class="destination-label">Destino padrão atual</span>
+            <strong id="destination-name" class="destination-name is-empty">Nenhuma pasta definida</strong>
+            <p id="destination-status" class="message" role="status" aria-live="polite"></p>
+          </div>
+          <button id="change-folder-button" class="button button-secondary" type="button">Alterar Pasta</button>
+        </div>
+      </section>
+
       <section class="panel import-panel" aria-labelledby="import-title">
         <div class="section-heading">
           <div>
@@ -26,6 +43,9 @@
             <h2 id="import-title">Cole os dados da planilha</h2>
           </div>
         </div>
+        <p id="lock-message" class="lock-message" role="alert" hidden>
+          É necessário escolher uma pasta de destino para iniciar.
+        </p>
         <p class="helper-text">Copie a planilha inteira do Excel e cole aqui. O sistema usa as colunas <strong>A: código, B: descrição, C: quantidade disponível, D: depósito de origem e F: depósito de destino</strong>. A coluna E e o cabeçalho são ignorados.</p>
         <label class="sr-only" for="spreadsheet-input">Dados copiados da planilha</label>
         <textarea id="spreadsheet-input" spellcheck="false" placeholder="Nº do item&#9;Descrição do item&#9;Em estoque&#9;Confirmado&#9;Pedido&#9;Disponível&#10;MP00065610&#9;Produto de exemplo&#9;10.000.000&#9;DP018&#9;&#9;DP001"></textarea>
@@ -69,68 +89,53 @@
 
       <footer class="page-footer">Protótipo de testes · os dados ficam armazenados somente neste navegador.</footer>
     </main>
+
     <dialog id="preview-modal">
+      <div class="modal-content">
+        <h2>Itens encontrados</h2>
+        <div id="preview-list"></div>
+        <div class="modal-actions">
+          <button id="modal-start-conference" class="button button-primary">Iniciar Conferência</button>
+          <button id="modal-close" class="button">Fechar</button>
+        </div>
+      </div>
+    </dialog>
 
-  <div class="modal-content">
+    <dialog id="reset-modal">
+      <div class="modal-content">
+        <h2>⚠ Atenção</h2>
+        <p>Deseja realmente iniciar uma nova conferência?</p>
+        <p>Todos os dados da conferência atual serão perdidos.</p>
+        <div class="modal-actions">
+          <button id="confirm-reset" class="button button-primary" type="button">Sim, Reiniciar</button>
+          <button id="cancel-reset" class="button" type="button">Cancelar</button>
+        </div>
+      </div>
+    </dialog>
 
-    <h2>Itens encontrados</h2>
+    <dialog id="destination-modal">
+      <div class="modal-content">
+        <h2>Escolha a pasta de destino</h2>
+        <p>Para iniciar, defina a pasta local onde os relatórios <strong>.txt</strong> serão gravados.</p>
 
-    <div id="preview-list"></div>
+        <div id="destination-picker-block">
+          <p class="helper-text">O navegador vai pedir permissão de leitura e gravação nessa pasta.</p>
+          <div class="modal-actions">
+            <button id="destination-pick-button" class="button button-primary" type="button">Escolher pasta</button>
+          </div>
+        </div>
 
-    <div class="modal-actions">
+        <div id="destination-manual-block" hidden>
+          <p class="helper-text">Este navegador não permite escolher pastas diretamente. Informe um nome para o destino; os relatórios serão baixados normalmente.</p>
+          <label class="sr-only" for="destination-manual-input">Nome do destino</label>
+          <input id="destination-manual-input" class="text-input" type="text" placeholder="Ex.: Relatórios de transferência" autocomplete="off">
+          <div class="modal-actions">
+            <button id="destination-manual-save" class="button button-primary" type="button">Salvar destino</button>
+          </div>
+        </div>
 
-      <button
-        id="modal-start-conference"
-        class="button button-primary">
-        Iniciar Conferência
-      </button>
-
-      <button
-        id="modal-close"
-        class="button">
-        Fechar
-      </button>
-
-    </div>
-
-  </div>
-
-</dialog>
-
-<dialog id="reset-modal">
-
-  <div class="modal-content">
-
-    <h2>⚠ Atenção</h2>
-
-    <p>
-      Deseja realmente iniciar uma nova conferência?
-    </p>
-
-    <p>
-      Todos os dados da conferência atual serão perdidos.
-    </p>
-
-    <div class="modal-actions">
-      
-      <button
-        id="confirm-reset"
-        class="button button-primary"
-        type="button">
-        Sim, Reiniciar
-      </button>
-	
-	
-      <button
-        id="cancel-reset"
-        class="button"
-        type="button">
-        Cancelar
-      </button>
-
-    </div>
-  </div>
-
-</dialog>
+        <p id="destination-modal-message" class="message is-error" role="alert"></p>
+      </div>
+    </dialog>
   </body>
 </html>

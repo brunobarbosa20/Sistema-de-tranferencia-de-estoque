@@ -1,4 +1,9 @@
 const STORAGE_KEY = "transferencia-estoque-relatorios";
+const DESTINATION_KEY = "transferencia-estoque-destino-padrao";
+const HANDLE_DB_NAME = "transferencia-estoque-db";
+const HANDLE_STORE = "handles";
+const HANDLE_KEY = "destino-padrao";
+
 const ACTIONS = [
   { value: "transferido", label: "Transferido" },
   { value: "em analise", label: "Em análise" },
@@ -8,6 +13,7 @@ const ACTIONS = [
 const input = document.querySelector("#spreadsheet-input");
 const processButton = document.querySelector("#process-button");
 const importMessage = document.querySelector("#import-message");
+const importPanel = document.querySelector(".import-panel");
 const itemsSection = document.querySelector("#items-section");
 const itemsList = document.querySelector("#items-list");
 const itemCount = document.querySelector("#item-count");
@@ -25,13 +31,242 @@ const resetModal = document.getElementById("reset-modal");
 const cancelReset = document.getElementById("cancel-reset");
 const confirmReset = document.getElementById("confirm-reset");
 
+// Destino padrão
+const destinationName = document.getElementById("destination-name");
+const destinationStatus = document.getElementById("destination-status");
+const changeFolderButton = document.getElementById("change-folder-button");
+const lockMessage = document.getElementById("lock-message");
+const destinationModal = document.getElementById("destination-modal");
+const destinationPickerBlock = document.getElementById("destination-picker-block");
+const destinationPickButton = document.getElementById("destination-pick-button");
+const destinationManualBlock = document.getElementById("destination-manual-block");
+const destinationManualInput = document.getElementById("destination-manual-input");
+const destinationManualSave = document.getElementById("destination-manual-save");
+const destinationModalMessage = document.getElementById("destination-modal-message");
+
 let items = [];
 let conferenceStarted = false;
 
+// Destino: nome fica no localStorage; o handle da pasta fica no IndexedDB
+// (um FileSystemDirectoryHandle não pode ser serializado em localStorage).
+let destinationLabel = "";
+let destinationHandle = null;
+
+const SUPPORTS_DIRECTORY_PICKER = typeof window.showDirectoryPicker === "function";
+
 finishButton.hidden = true;
 
-
 const copySapButton = document.getElementById("copy-sap-button");
+
+/* ---------- Destino padrão: IndexedDB ---------- */
+
+function openHandleDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(HANDLE_DB_NAME, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(HANDLE_STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveHandle(handle) {
+  const db = await openHandleDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE, "readwrite");
+    tx.objectStore(HANDLE_STORE).put(handle, HANDLE_KEY);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  });
+}
+
+async function loadHandle() {
+  const db = await openHandleDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(HANDLE_STORE, "readonly").objectStore(HANDLE_STORE).get(HANDLE_KEY);
+    request.onsuccess = () => {
+      db.close();
+      resolve(request.result ?? null);
+    };
+    request.onerror = () => {
+      db.close();
+      reject(request.error);
+    };
+  });
+}
+
+async function clearHandle() {
+  const db = await openHandleDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE, "readwrite");
+    tx.objectStore(HANDLE_STORE).delete(HANDLE_KEY);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  });
+}
+
+/* ---------- Destino padrão: estado e bloqueio ---------- */
+
+function hasDestination() {
+  return Boolean(destinationLabel);
+}
+
+function renderDestination() {
+  if (hasDestination()) {
+    destinationName.textContent = destinationLabel;
+    destinationName.classList.remove("is-empty");
+  } else {
+    destinationName.textContent = "Nenhuma pasta definida";
+    destinationName.classList.add("is-empty");
+  }
+}
+
+function applyLock() {
+  const locked = !hasDestination();
+  input.disabled = locked;
+  processButton.disabled = locked;
+  lockMessage.hidden = !locked;
+  importPanel.classList.toggle("is-locked", locked);
+}
+
+function openDestinationModal() {
+  setMessage(destinationModalMessage, "");
+  destinationPickerBlock.hidden = !SUPPORTS_DIRECTORY_PICKER;
+  destinationManualBlock.hidden = SUPPORTS_DIRECTORY_PICKER;
+  if (!destinationModal.open) destinationModal.showModal();
+}
+
+function commitDestination(label, handle) {
+  destinationLabel = label;
+  destinationHandle = handle;
+  localStorage.setItem(DESTINATION_KEY, label);
+  renderDestination();
+  applyLock();
+  setMessage(
+    destinationStatus,
+    handle
+      ? "Os relatórios serão gravados nesta pasta."
+      : "Navegador sem acesso direto a pastas: os relatórios serão baixados.",
+  );
+  if (destinationModal.open) destinationModal.close();
+}
+
+async function chooseDirectory() {
+  if (!SUPPORTS_DIRECTORY_PICKER) {
+    openDestinationModal();
+    return;
+  }
+
+  try {
+    const handle = await window.showDirectoryPicker({
+      id: "transferencia-estoque",
+      mode: "readwrite",
+    });
+    await saveHandle(handle);
+    commitDestination(handle.name, handle);
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      setMessage(destinationModalMessage, "Seleção cancelada. Escolha uma pasta para continuar.", true);
+      return;
+    }
+    console.error("Erro ao escolher a pasta:", error);
+    setMessage(destinationModalMessage, `Não foi possível definir a pasta: ${error.message}`, true);
+  }
+}
+
+async function initDestination() {
+  const savedLabel = localStorage.getItem(DESTINATION_KEY);
+
+  if (savedLabel) {
+    if (SUPPORTS_DIRECTORY_PICKER) {
+      try {
+        destinationHandle = await loadHandle();
+      } catch (error) {
+        console.error("Erro ao ler o handle da pasta:", error);
+        destinationHandle = null;
+      }
+      // Nome salvo, mas o handle se perdeu (dados do site limpos): exige nova escolha.
+      if (destinationHandle) {
+        destinationLabel = savedLabel;
+        setMessage(destinationStatus, "O navegador pode pedir permissão de gravação ao finalizar o relatório.");
+      }
+    } else {
+      destinationLabel = savedLabel;
+      setMessage(destinationStatus, "Navegador sem acesso direto a pastas: os relatórios serão baixados.");
+    }
+  }
+
+  renderDestination();
+  applyLock();
+
+  if (!hasDestination()) {
+    // showDirectoryPicker() exige um clique do usuário; por isso abrimos o diálogo
+    // que pede a escolha imediatamente e dispara o seletor no clique.
+    openDestinationModal();
+  }
+}
+
+async function ensureWritePermission(handle) {
+  const options = { mode: "readwrite" };
+  if (typeof handle.queryPermission !== "function") return true;
+  if ((await handle.queryPermission(options)) === "granted") return true;
+  return (await handle.requestPermission(options)) === "granted";
+}
+
+async function writeReportToDestination(report) {
+  if (!destinationHandle) return false;
+  if (!(await ensureWritePermission(destinationHandle))) return false;
+
+  const fileHandle = await destinationHandle.getFileHandle(report.filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  try {
+    await writable.write(report.content);
+  } finally {
+    await writable.close();
+  }
+  return true;
+}
+
+changeFolderButton.addEventListener("click", () => {
+  if (SUPPORTS_DIRECTORY_PICKER) {
+    chooseDirectory();
+  } else {
+    destinationManualInput.value = destinationLabel;
+    openDestinationModal();
+  }
+});
+
+destinationPickButton.addEventListener("click", chooseDirectory);
+
+destinationManualSave.addEventListener("click", () => {
+  const label = destinationManualInput.value.trim();
+  if (!label) {
+    setMessage(destinationModalMessage, "Informe um nome para o destino.", true);
+    return;
+  }
+  clearHandle().catch(() => {});
+  commitDestination(label, null);
+});
+
+destinationManualInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") destinationManualSave.click();
+});
+
+// Sem destino definido o diálogo não pode ser dispensado com Esc.
+destinationModal.addEventListener("cancel", (event) => {
+  if (!hasDestination()) event.preventDefault();
+});
 
 /* ---------- Copiar para o SAP ---------- */
 
@@ -473,7 +708,9 @@ function renderReports() {
       date.textContent = report.completedAt;
       const detail = document.createElement("p");
       detail.className = "report-detail";
-      detail.textContent = `${report.itemCount} ${report.itemCount === 1 ? "item" : "itens"}`;
+      const countText = `${report.itemCount} ${report.itemCount === 1 ? "item" : "itens"}`;
+      const savedText = report.savedTo ? ` · gravado em: ${report.savedTo}` : "";
+      detail.textContent = countText + savedText;
       info.append(date, detail);
 
       const link = document.createElement("a");
@@ -514,6 +751,11 @@ function formatReport(completedAt, reportItems) {
 /* ---------- Botões principais ---------- */
 
 processButton.addEventListener("click", () => {
+  if (!hasDestination()) {
+    openDestinationModal();
+    return;
+  }
+
   if (conferenceStarted) {
     resetModal.showModal();
     return;
@@ -523,10 +765,10 @@ processButton.addEventListener("click", () => {
     items = parseSpreadsheet(input.value);
 
     items.sort((a, b) =>
-    a.description.localeCompare(b.description, "pt-BR", {
-      sensitivity: "base"
-    })
-  );
+      a.description.localeCompare(b.description, "pt-BR", {
+        sensitivity: "base",
+      }),
+    );
 
     renderPreview();
     previewModal.showModal();
@@ -557,7 +799,15 @@ processButton.addEventListener("click", () => {
   }
 });
 
-finishButton.addEventListener("click", () => {
+finishButton.addEventListener("click", async () => {
+  // Todas as validações são síncronas, para preservar o gesto do usuário
+  // necessário ao pedido de permissão de gravação na pasta.
+  if (!hasDestination()) {
+    setMessage(finishMessage, "Defina uma pasta de destino antes de finalizar.", true);
+    openDestinationModal();
+    return;
+  }
+
   const unclassifiedIndex = items.findIndex((item) => !item.action);
   if (unclassifiedIndex !== -1) {
     setMessage(finishMessage, `Escolha uma ação para o item ${unclassifiedIndex + 1}.`, true);
@@ -580,8 +830,9 @@ finishButton.addEventListener("click", () => {
     return;
   }
 
-  const completedAt = new Date().toLocaleString("pt-BR");
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const now = new Date();
+  const completedAt = now.toLocaleString("pt-BR");
+  const timestamp = now.toISOString().replace(/[:.]/g, "-");
   const filename = `relatorio-transferencia-${timestamp}.txt`;
   const reportItems = items.map((item) => ({ ...item }));
   const report = {
@@ -590,21 +841,52 @@ finishButton.addEventListener("click", () => {
     itemCount: reportItems.length,
     filename,
     content: formatReport(completedAt, reportItems),
+    savedTo: "",
   };
 
+  finishButton.disabled = true;
+  let statusText = "";
+
   try {
+    // 1) Tenta gravar na pasta de destino configurada.
+    let savedInFolder = false;
+    try {
+      savedInFolder = await writeReportToDestination(report);
+    } catch (error) {
+      console.error("Erro ao gravar na pasta de destino:", error);
+    }
+
+    if (savedInFolder) {
+      report.savedTo = `pasta "${destinationLabel}"`;
+      statusText = `Relatório gravado na pasta "${destinationLabel}" e salvo no histórico.`;
+    } else {
+      // 2) Fallback: download normal do navegador.
+      downloadReport(report);
+      report.savedTo = "download do navegador";
+      statusText = destinationHandle
+        ? "Não foi possível gravar na pasta (permissão negada ou pasta indisponível). O relatório foi baixado pelo navegador e salvo no histórico."
+        : "Relatório baixado pelo navegador e salvo no histórico.";
+    }
+
+    // 3) Histórico local.
     const reports = loadReports();
     reports.push(report);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
     renderReports();
-    setMessage(finishMessage, "Relatório salvo neste navegador. Você pode baixá-lo pelo histórico quando quiser.");
+    setMessage(finishMessage, statusText);
   } catch (error) {
     setMessage(finishMessage, `Não foi possível salvar o relatório: ${error.message}`, true);
+  } finally {
+    finishButton.disabled = false;
   }
 });
+
+/* ---------- Inicialização ---------- */
 
 try {
   renderReports();
 } catch (error) {
   reportsEmpty.textContent = error.message;
 }
+
+initDestination();
